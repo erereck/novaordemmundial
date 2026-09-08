@@ -20,9 +20,12 @@ global EXTERNAL_PID := 0
 global EXTERNAL_HWND := 0
 global EXTERNAL_TITLE := ""
 global EXTERNAL_STARTED := 0
+global WEB_GUARD_ACTIVE := false
+global WEB_GUARD_MISSES := 0
 
 #Include "src\Sync.ahk"
 #Include "src\UI.ahk"
+#Include "src\WebGuard.ahk"
 #Include "src\Apps.ahk"
 #Include "src\Security.ahk"
 #Include "src\Windows.ahk"
@@ -47,6 +50,7 @@ RWin::Return
 #^d::Return
 
 ^!+F12::AskExit()
+^!+u::OpenStudentChromeSetup()
 F1::ShowHome()
 
 #HotIf LauncherActive()
