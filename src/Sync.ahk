@@ -1,5 +1,22 @@
 SyncAssets(force := false) {
-    global CFG
+    global CFG, CACHEDIR
+
+    configVersion := IniRead(CFG, "General", "Version", "0")
+    marker := CACHEDIR "\assets.version"
+    cachedVersion := ""
+
+    if FileExist(marker) {
+        try {
+            cachedVersion := Trim(FileRead(marker))
+        } catch {
+            cachedVersion := ""
+        }
+    }
+
+    ; Se a configuracao mudou, os arquivos com o mesmo nome tambem podem ter
+    ; mudado de URL. Forca a troca somente nessa primeira abertura da versao.
+    if (cachedVersion != configVersion)
+        force := true
 
     EnsureAsset(
         IniRead(CFG, "General", "WallpaperURL", ""),
@@ -21,6 +38,13 @@ SyncAssets(force := false) {
 
     SyncSectionAssets("Home", force)
     SyncSectionAssets("Game", force)
+
+    try {
+        if FileExist(marker)
+            FileDelete(marker)
+        FileAppend(configVersion, marker, "UTF-8")
+    } catch {
+    }
 }
 
 SyncSectionAssets(prefix, force := false) {
@@ -58,6 +82,8 @@ EnsureAsset(url, fileName, force := false) {
         if !FileExist(temp)
             return false
 
+        ; So apaga o asset anterior DEPOIS que o novo terminou de baixar.
+        ; Se a internet cair, o launcher continua com o ultimo arquivo valido.
         if FileExist(path)
             FileDelete(path)
 
@@ -111,7 +137,26 @@ SyncNow() {
 
 ChooseConfig() {
     global CFG, CACHECFG, LOCALCFG
-    CFG := FileExist(CACHECFG) ? CACHECFG : LOCALCFG
+
+    if !FileExist(CACHECFG) {
+        CFG := LOCALCFG
+        return
+    }
+
+    ; Um cache remoto antigo nao pode esconder uma versao nova que veio no
+    ; git/ZIP. Usa a configuracao de maior versao entre local e cache.
+    localVersion := VersionNumber(IniRead(LOCALCFG, "General", "Version", "0"))
+    cacheVersion := VersionNumber(IniRead(CACHECFG, "General", "Version", "0"))
+
+    CFG := localVersion >= cacheVersion ? LOCALCFG : CACHECFG
+}
+
+VersionNumber(value) {
+    try {
+        return Integer(value)
+    } catch {
+        return 0
+    }
 }
 
 CheckUpdate() {
@@ -121,7 +166,7 @@ CheckUpdate() {
         return
 
     newVersion := IniRead(CACHECFG, "General", "Version", "0")
-    if (newVersion = CFG_VERSION)
+    if (VersionNumber(newVersion) <= VersionNumber(CFG_VERSION))
         return
 
     CFG := CACHECFG
