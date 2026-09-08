@@ -1,1 +1,0 @@
-Design update assets are downloaded/cached by the launcher; local permanent assets may also live here.
