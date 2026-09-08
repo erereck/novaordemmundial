@@ -1,1 +1,0 @@
-Binary icon assets used by Modo Aluno.
