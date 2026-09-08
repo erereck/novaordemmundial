@@ -2,8 +2,9 @@
 title Modo Aluno - Servidor
 cd /d "%~dp0"
 
-rem Mantem o config do servidor igual ao config principal do repo.
-copy /Y "..\config.ini" "config.ini" >nul
+rem Na primeira execucao cria o config do servidor a partir do config principal.
+rem Depois disso o painel pode alterar server\config.ini sem perder tudo ao reiniciar.
+if not exist "config.ini" copy /Y "..\config.ini" "config.ini" >nul
 
 python server.py
 if errorlevel 1 (
