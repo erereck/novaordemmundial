@@ -1,0 +1,1 @@
+MMM icon binary is stored separately in the repository history/update flow.
