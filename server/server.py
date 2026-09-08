@@ -3,23 +3,67 @@ from urllib.parse import parse_qs
 from pathlib import Path
 import configparser
 import html
+import shutil
 
 ROOT = Path(__file__).resolve().parent
 CONFIG = ROOT / "config.ini"
+BASE_CONFIG = ROOT.parent / "config.ini"
 HOST = "0.0.0.0"
 PORT = 8765
 
 
-def read_config():
+def read_config_file(path):
     cfg = configparser.ConfigParser(interpolation=None)
     cfg.optionxform = str
-    cfg.read(CONFIG, encoding="utf-8-sig")
+    cfg.read(path, encoding="utf-8-sig")
     return cfg
+
+
+def read_config():
+    return read_config_file(CONFIG)
 
 
 def write_config(cfg):
     with CONFIG.open("w", encoding="utf-8-sig") as f:
         cfg.write(f, space_around_delimiters=False)
+
+
+def version_of(cfg):
+    try:
+        return int(cfg.get("General", "Version", fallback="0"))
+    except (ValueError, configparser.Error):
+        return 0
+
+
+def upgrade_config_from_repo():
+    """Atualiza estrutura/apps sem apagar as escolhas do painel do professor."""
+    if not BASE_CONFIG.exists():
+        return
+
+    base = read_config_file(BASE_CONFIG)
+
+    if not CONFIG.exists():
+        shutil.copyfile(BASE_CONFIG, CONFIG)
+        return
+
+    current = read_config()
+    if version_of(base) <= version_of(current):
+        return
+
+    # Guarda somente as configuracoes que o painel realmente administra.
+    keep_special_enabled = current.get("Special", "Enabled", fallback="0")
+    keep_special_name = current.get("Special", "Name", fallback="FAZER PROVA")
+    keep_special_target = current.get("Special", "Target", fallback="https://example.com/prova")
+    keep_games = current.get("General", "GamesEnabled", fallback="1")
+
+    shutil.copyfile(BASE_CONFIG, CONFIG)
+    upgraded = read_config()
+
+    upgraded["Special"]["Enabled"] = keep_special_enabled
+    upgraded["Special"]["Name"] = keep_special_name
+    upgraded["Special"]["Target"] = keep_special_target
+    upgraded["General"]["GamesEnabled"] = keep_games
+    write_config(upgraded)
 
 
 def page():
@@ -116,6 +160,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    upgrade_config_from_repo()
+
     print("=" * 46)
     print(" MODO ALUNO - SERVIDOR DE TESTE")
     print("=" * 46)
