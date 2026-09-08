@@ -15,6 +15,10 @@ global PAGE := "home"
 global UI := 0
 global UI_VISIBLE := false
 
+global EXTERNAL_ACTIVE := false
+global EXTERNAL_PID := 0
+global EXTERNAL_HWND := 0
+
 DirCreate(CACHEDIR)
 OnExit(RestoreWindows)
 
@@ -67,11 +71,12 @@ SetTimer(CheckUpdate, seconds * 1000)
 
 ; -------------------- UI --------------------
 BuildUI() {
-    global UI, UI_VISIBLE, PAGE, CFG
+    global UI, UI_VISIBLE, PAGE, CFG, EXTERNAL_ACTIVE
 
     if IsObject(UI) {
         try {
             UI.Destroy()
+        } catch {
         }
     }
 
@@ -127,6 +132,13 @@ BuildUI() {
 
     UI.Show("x0 y0 w" w " h" h)
     UI_VISIBLE := true
+
+    if EXTERNAL_ACTIVE {
+        try {
+            UI.Opt("-AlwaysOnTop")
+        } catch {
+        }
+    }
 }
 
 AddGrid(items, topY) {
@@ -213,48 +225,89 @@ OpenHomeNamed(name) {
 }
 
 OpenProgram(target) {
-    HideLauncher()
+    global EXTERNAL_PID, EXTERNAL_HWND
+
+    PrepareExternal()
+
+    pid := 0
     try {
-        Run(target)
+        Run(target, , , &pid)
     } catch {
-        ShowHome()
+        FinishExternal()
         MsgBox("Não consegui abrir:`n`n" target "`n`nEsse caminho ainda é placeholder.", "Modo Aluno")
         return
     }
-    ToolTip("F1 = voltar ao Modo Aluno", 20, 20)
-    SetTimer(() => ToolTip(), -2500)
+
+    EXTERNAL_PID := pid
+    EXTERNAL_HWND := 0
+    SetTimer(MonitorExternal, 500)
 }
 
 OpenWeb(url) {
+    global EXTERNAL_PID, EXTERNAL_HWND
+
     if (url = "")
         return
 
-    HideLauncher()
+    PrepareExternal()
     chrome := FindChrome()
+    before := Map()
 
+    if (chrome != "") {
+        for hwnd in WinGetList("ahk_exe chrome.exe")
+            before[hwnd] := true
+    }
+
+    pid := 0
     try {
         if (chrome != "") {
             q := Chr(34)
-            Run(q chrome q " --app=" q url q " --new-window")
+            Run(q chrome q " --app=" q url q " --new-window", , , &pid)
         } else {
-            Run(url)
+            Run(url, , , &pid)
         }
     } catch {
-        ShowHome()
+        FinishExternal()
         MsgBox("Não consegui abrir:`n" url, "Modo Aluno")
         return
     }
 
-    ToolTip("F1 = voltar ao Modo Aluno", 20, 20)
-    SetTimer(() => ToolTip(), -2500)
+    EXTERNAL_PID := pid
+    EXTERNAL_HWND := 0
+
+    if (chrome != "") {
+        Loop 12 {
+            Sleep(200)
+            for hwnd in WinGetList("ahk_exe chrome.exe") {
+                if !before.Has(hwnd) {
+                    EXTERNAL_HWND := hwnd
+                    break
+                }
+            }
+            if EXTERNAL_HWND
+                break
+        }
+
+        if !EXTERNAL_HWND {
+            activeChrome := WinActive("ahk_exe chrome.exe")
+            if activeChrome
+                EXTERNAL_HWND := activeChrome
+        }
+    }
+
+    SetTimer(MonitorExternal, 500)
 }
 
 FindChrome() {
     paths := [A_ProgramFiles "\Google\Chrome\Application\chrome.exe"]
+
     pf86 := EnvGet("ProgramFiles(x86)")
     if (pf86 != "")
         paths.Push(pf86 "\Google\Chrome\Application\chrome.exe")
-    paths.Push(A_LocalAppData "\Google\Chrome\Application\chrome.exe")
+
+    localAppData := EnvGet("LOCALAPPDATA")
+    if (localAppData != "")
+        paths.Push(localAppData "\Google\Chrome\Application\chrome.exe")
 
     for _, p in paths {
         if FileExist(p)
@@ -263,18 +316,82 @@ FindChrome() {
     return ""
 }
 
-HideLauncher() {
-    global UI, UI_VISIBLE
+PrepareExternal() {
+    global UI, UI_VISIBLE, EXTERNAL_ACTIVE, EXTERNAL_PID, EXTERNAL_HWND
+
+    EXTERNAL_ACTIVE := true
+    EXTERNAL_PID := 0
+    EXTERNAL_HWND := 0
+
     if IsObject(UI) {
         try {
-            UI.Hide()
+            UI.Opt("-AlwaysOnTop")
+        } catch {
+        }
+        try {
+            UI.Show("NoActivate x0 y0 w" A_ScreenWidth " h" A_ScreenHeight)
+            UI_VISIBLE := true
+        } catch {
         }
     }
-    UI_VISIBLE := false
+}
+
+MonitorExternal() {
+    global EXTERNAL_ACTIVE, EXTERNAL_PID, EXTERNAL_HWND
+
+    if !EXTERNAL_ACTIVE {
+        SetTimer(MonitorExternal, 0)
+        return
+    }
+
+    if EXTERNAL_HWND {
+        if !WinExist("ahk_id " EXTERNAL_HWND) {
+            FinishExternal()
+        }
+        return
+    }
+
+    if EXTERNAL_PID {
+        if !ProcessExist(EXTERNAL_PID) {
+            FinishExternal()
+        }
+    }
+}
+
+FinishExternal() {
+    global UI, UI_VISIBLE, EXTERNAL_ACTIVE, EXTERNAL_PID, EXTERNAL_HWND
+
+    SetTimer(MonitorExternal, 0)
+    EXTERNAL_ACTIVE := false
+    EXTERNAL_PID := 0
+    EXTERNAL_HWND := 0
+
+    if IsObject(UI) {
+        try {
+            UI.Opt("+AlwaysOnTop")
+        } catch {
+        }
+        try {
+            UI.Show("x0 y0 w" A_ScreenWidth " h" A_ScreenHeight)
+            UI_VISIBLE := true
+            WinActivate("ahk_id " UI.Hwnd)
+        } catch {
+        }
+    }
+}
+
+CancelExternalMonitor() {
+    global EXTERNAL_ACTIVE, EXTERNAL_PID, EXTERNAL_HWND
+
+    SetTimer(MonitorExternal, 0)
+    EXTERNAL_ACTIVE := false
+    EXTERNAL_PID := 0
+    EXTERNAL_HWND := 0
 }
 
 ShowHome() {
     global PAGE
+    CancelExternalMonitor()
     PAGE := "home"
     BuildUI()
 }
@@ -308,29 +425,74 @@ OpenSpecial() {
 }
 
 ; -------------------- SENHAS --------------------
+PromptPassword(prompt, title) {
+    global UI, EXTERNAL_ACTIVE
+
+    if IsObject(UI) {
+        try {
+            UI.Opt("-AlwaysOnTop")
+        } catch {
+        }
+    }
+
+    SetTimer(ForceDialogFront.Bind(title), -100)
+    result := InputBox(prompt, title, "Password w390 h145")
+
+    if IsObject(UI) && !EXTERNAL_ACTIVE {
+        try {
+            UI.Opt("+AlwaysOnTop")
+        } catch {
+        }
+    }
+
+    return result
+}
+
+ForceDialogFront(title) {
+    hwnd := WinExist(title)
+    if !hwnd
+        return
+
+    try {
+        WinSetAlwaysOnTop(1, "ahk_id " hwnd)
+    } catch {
+    }
+
+    try {
+        WinActivate("ahk_id " hwnd)
+    } catch {
+    }
+}
+
 AskRestricted() {
     global CFG
     expected := IniRead(CFG, "Security", "RestrictedPassword", "4321")
-    r := InputBox("Digite a senha do professor:", "Conteúdo restrito", "Password w380 h145")
+    r := PromptPassword("Digite a senha do professor:", "Conteúdo restrito")
+
     if (r.Result != "OK")
         return false
+
     if (r.Value != expected) {
         MsgBox("Senha incorreta.", "Modo Aluno")
         return false
     }
+
     return true
 }
 
 AskExit(*) {
     global CFG
     expected := IniRead(CFG, "Security", "ExitPassword", "1234")
-    r := InputBox("Digite a senha do professor para encerrar:", "Professor", "Password w390 h145")
+    r := PromptPassword("Digite a senha do professor para encerrar:", "Professor")
+
     if (r.Result != "OK")
         return
+
     if (r.Value != expected) {
         MsgBox("Senha incorreta.", "Modo Aluno")
         return
     }
+
     RestoreWindows()
     ExitApp()
 }
@@ -343,14 +505,19 @@ SyncNow() {
         return false
 
     temp := CACHEDIR "\download.tmp.ini"
+
     try {
         if FileExist(temp)
             FileDelete(temp)
+
         Download(url, temp)
+
         if (IniRead(temp, "General", "Version", "") = "")
             throw Error("config inválido")
+
         if (IniRead(temp, "General", "Title", "") = "")
             throw Error("config inválido")
+
         FileCopy(temp, CACHECFG, true)
         FileDelete(temp)
         return true
@@ -358,6 +525,7 @@ SyncNow() {
         if FileExist(temp) {
             try {
                 FileDelete(temp)
+            } catch {
             }
         }
         return false
@@ -371,6 +539,7 @@ ChooseConfig() {
 
 CheckUpdate() {
     global CFG, CACHECFG, CFG_VERSION
+
     if !SyncNow()
         return
 
@@ -380,6 +549,7 @@ CheckUpdate() {
 
     CFG := CACHECFG
     CFG_VERSION := newVersion
+
     if LauncherActive()
         BuildUI()
 }
@@ -388,22 +558,28 @@ CheckUpdate() {
 HideTaskbar() {
     try {
         WinHide("ahk_class Shell_TrayWnd")
+    } catch {
     }
+
     try {
         for hwnd in WinGetList("ahk_class Shell_SecondaryTrayWnd") {
             WinHide("ahk_id " hwnd)
         }
+    } catch {
     }
 }
 
 ShowTaskbar() {
     try {
         WinShow("ahk_class Shell_TrayWnd")
+    } catch {
     }
+
     try {
         for hwnd in WinGetList("ahk_class Shell_SecondaryTrayWnd") {
             WinShow("ahk_id " hwnd)
         }
+    } catch {
     }
 }
 
