@@ -72,56 +72,79 @@ OpenProgram(target) {
 }
 
 OpenWeb(url) {
-    global EXTERNAL_PID, EXTERNAL_HWND
-
     if (url = "")
         return
 
-    PrepareExternal()
-    chrome := FindChrome()
-    before := Map()
-
-    if (chrome != "") {
-        for hwnd in WinGetList("ahk_exe chrome.exe")
-            before[hwnd] := true
+    if IsBlockedWebUrl(url) {
+        ShowBlockedNotice()
+        return
     }
+
+    chrome := FindChrome()
+    if (chrome = "") {
+        MsgBox("Google Chrome nao encontrado neste computador.", "Modo Aluno")
+        return
+    }
+
+    OpenChromeProfileUrl(chrome, url, true)
+}
+
+OpenChromeProfileUrl(chrome, url, appMode := true) {
+    global EXTERNAL_PID, EXTERNAL_HWND, WEB_GUARD_ACTIVE
+
+    PrepareExternal()
+
+    before := Map()
+    for hwnd in WinGetList("ahk_exe chrome.exe")
+        before[hwnd] := true
+
+    profile := StudentChromeProfileDir()
+    port := WebGuardPort()
+    q := Chr(34)
+
+    cmd := q chrome q
+        . " --user-data-dir=" q profile q
+        . " --remote-debugging-address=127.0.0.1"
+        . " --remote-debugging-port=" port
+        . " --no-first-run --no-default-browser-check"
+
+    if appMode
+        cmd .= " --app=" q url q " --new-window"
+    else
+        cmd .= " --new-window " q url q
 
     pid := 0
 
     try {
-        if (chrome != "") {
-            q := Chr(34)
-            Run(q chrome q " --app=" q url q " --new-window", , , &pid)
-        } else {
-            Run(url, , , &pid)
-        }
+        Run(cmd, , , &pid)
     } catch {
         FinishExternal()
-        MsgBox("Nao consegui abrir:`n" url, "Modo Aluno")
+        MsgBox("Nao consegui abrir o Chrome.", "Modo Aluno")
         return
     }
 
     EXTERNAL_PID := pid
     EXTERNAL_HWND := 0
+    StartWebGuardMonitor()
 
-    if (chrome != "") {
-        Loop 16 {
-            Sleep(180)
-            for hwnd in WinGetList("ahk_exe chrome.exe") {
-                if !before.Has(hwnd) {
-                    EXTERNAL_HWND := hwnd
-                    break
-                }
-            }
-            if EXTERNAL_HWND
+    Loop 20 {
+        Sleep(160)
+
+        for hwnd in WinGetList("ahk_exe chrome.exe") {
+            if !before.Has(hwnd) {
+                EXTERNAL_HWND := hwnd
                 break
+            }
         }
 
-        if !EXTERNAL_HWND {
-            activeChrome := WinActive("ahk_exe chrome.exe")
-            if activeChrome
-                EXTERNAL_HWND := activeChrome
-        }
+        if EXTERNAL_HWND
+            break
+    }
+
+    if !EXTERNAL_HWND {
+        activeChrome := WinActive("ahk_exe chrome.exe")
+        if activeChrome
+            EXTERNAL_HWND := activeChrome
     }
 
     SetTimer(MonitorExternal, 500)
