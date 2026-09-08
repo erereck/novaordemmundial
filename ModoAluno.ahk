@@ -69,8 +69,11 @@ SetTimer(CheckUpdate, seconds * 1000)
 BuildUI() {
     global UI, UI_VISIBLE, PAGE, CFG
 
-    if IsObject(UI)
-        try UI.Destroy()
+    if IsObject(UI) {
+        try {
+            UI.Destroy()
+        }
+    }
 
     title := IniRead(CFG, "General", "Title", "Modo Aluno")
     subtitle := IniRead(CFG, "General", "Subtitle", "Escolha uma atividade")
@@ -211,8 +214,9 @@ OpenHomeNamed(name) {
 
 OpenProgram(target) {
     HideLauncher()
-    try Run(target)
-    catch {
+    try {
+        Run(target)
+    } catch {
         ShowHome()
         MsgBox("Não consegui abrir:`n`n" target "`n`nEsse caminho ainda é placeholder.", "Modo Aluno")
         return
@@ -252,16 +256,20 @@ FindChrome() {
         paths.Push(pf86 "\Google\Chrome\Application\chrome.exe")
     paths.Push(A_LocalAppData "\Google\Chrome\Application\chrome.exe")
 
-    for _, p in paths
+    for _, p in paths {
         if FileExist(p)
             return p
+    }
     return ""
 }
 
 HideLauncher() {
     global UI, UI_VISIBLE
-    if IsObject(UI)
-        try UI.Hide()
+    if IsObject(UI) {
+        try {
+            UI.Hide()
+        }
+    }
     UI_VISIBLE := false
 }
 
@@ -347,7 +355,11 @@ SyncNow() {
         FileDelete(temp)
         return true
     } catch {
-        try FileDelete(temp)
+        if FileExist(temp) {
+            try {
+                FileDelete(temp)
+            }
+        }
         return false
     }
 }
@@ -374,18 +386,24 @@ CheckUpdate() {
 
 ; -------------------- WINDOWS --------------------
 HideTaskbar() {
-    try WinHide("ahk_class Shell_TrayWnd")
     try {
-        for hwnd in WinGetList("ahk_class Shell_SecondaryTrayWnd")
+        WinHide("ahk_class Shell_TrayWnd")
+    }
+    try {
+        for hwnd in WinGetList("ahk_class Shell_SecondaryTrayWnd") {
             WinHide("ahk_id " hwnd)
+        }
     }
 }
 
 ShowTaskbar() {
-    try WinShow("ahk_class Shell_TrayWnd")
     try {
-        for hwnd in WinGetList("ahk_class Shell_SecondaryTrayWnd")
+        WinShow("ahk_class Shell_TrayWnd")
+    }
+    try {
+        for hwnd in WinGetList("ahk_class Shell_SecondaryTrayWnd") {
             WinShow("ahk_id " hwnd)
+        }
     }
 }
 
@@ -395,8 +413,16 @@ RestoreWindows(*) {
 
 LauncherActive() {
     global UI, UI_VISIBLE
-    if !UI_VISIBLE || !IsObject(UI)
+
+    if !UI_VISIBLE
         return false
-    try return WinActive("ahk_id " UI.Hwnd) != 0
-    catch return false
+
+    if !IsObject(UI)
+        return false
+
+    try {
+        return WinActive("ahk_id " UI.Hwnd) != 0
+    } catch {
+        return false
+    }
 }
