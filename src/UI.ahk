@@ -9,56 +9,67 @@ BuildUI() {
     }
 
     title := IniRead(CFG, "General", "Title", "Modo Aluno")
-    subtitle := IniRead(CFG, "General", "Subtitle", "Escolha uma atividade")
     w := A_ScreenWidth
     h := A_ScreenHeight
     scale := UIScale()
 
-    ; -DPIScale e importante aqui: em notebooks com Windows em 125%/150%
-    ; os controles nao podem crescer para fora da tela.
+    ; Coordenadas em pixels reais: o Windows nao pode inflar a interface
+    ; quando o notebook estiver em escala 125% ou 150%.
     UI := Gui("+AlwaysOnTop -Caption +ToolWindow -DPIScale", title)
-    UI.BackColor := "20242A"
+    UI.BackColor := "0B1119"
     UI.MarginX := 0
     UI.MarginY := 0
 
+    ; Wallpaper.
     wallpaperFile := IniRead(CFG, "General", "WallpaperFile", "")
     if (wallpaperFile != "") {
         wallpaperPath := ASSETDIR "\" wallpaperFile
         if FileExist(wallpaperPath) {
             try {
-                UI.AddPicture("x0 y0 w" w " h" h, wallpaperPath)
+                pic := UI.AddPicture("x0 y0 w" w " h" h, wallpaperPath)
             } catch {
             }
         }
     }
 
-    headerY := Max(10, Round(18 * scale))
-    titleH := Max(30, Round(42 * scale))
-    subtitleY := headerY + titleH
-    subtitleH := Max(20, Round(25 * scale))
-    gridTop := subtitleY + subtitleH + Max(8, Round(10 * scale))
+    headerH := HeaderHeight()
+    footerH := FooterHeight()
+    accentH := Max(2, Round(3 * scale))
+
+    ; Faixas escuras deixam texto e controles legiveis mesmo com wallpapers
+    ; diferentes. Uma linha azul fina vira a identidade visual do launcher.
+    UI.AddText("x0 y0 w" w " h" headerH " Background09111B", " ")
+    UI.AddText("x0 y" (headerH - accentH) " w" w " h" accentH " Background2F80ED", " ")
+
+    UI.AddText("x0 y" (h - footerH) " w" w " h" footerH " Background09111B", " ")
+    UI.AddText("x0 y" (h - footerH) " w" w " h" accentH " Background2F80ED", " ")
+
+    padX := Max(18, Round(34 * scale))
+    titleY := Max(8, Round(13 * scale))
+    titleFont := ClampInt(Round(25 * scale), 16, 29)
+    subtitleFont := ClampInt(Round(10 * scale), 8, 12)
 
     if (PAGE = "games") {
-        UI.SetFont("s" ClampInt(Round(26 * scale), 16, 30) " Bold", "Segoe UI")
-        UI.AddText("x0 y" headerY " w" w " h" titleH " Center cFFFFFF BackgroundTrans", "JOGOS")
-
-        UI.SetFont("s" ClampInt(Round(11 * scale), 8, 13) " Bold", "Segoe UI")
-        UI.AddText("x0 y" subtitleY " w" w " h" subtitleH " Center cFFFFFF BackgroundTrans", "F1 ou ESC = voltar")
-
-        AddGrid(ReadItems("Game"), gridTop)
-
-        footerH := FooterHeight()
-        backW := Max(120, Round(165 * scale))
-        backH := Max(30, Round(38 * scale))
-        back := UI.AddButton("x" Max(12, Round(20 * scale)) " y" (h - footerH + Floor((footerH - backH) / 2)) " w" backW " h" backH, "<- VOLTAR")
-        back.OnEvent("Click", (*) => ShowHome())
+        pageTitle := "JOGOS"
+        pageSubtitle := "Escolha um jogo  •  F1 ou ESC para voltar"
     } else {
-        UI.SetFont("s" ClampInt(Round(27 * scale), 17, 31) " Bold", "Segoe UI")
-        UI.AddText("x0 y" headerY " w" w " h" titleH " Center cFFFFFF BackgroundTrans", title)
+        pageTitle := title
+        pageSubtitle := IniRead(CFG, "General", "Subtitle", "Escolha uma atividade")
+    }
 
-        UI.SetFont("s" ClampInt(Round(12 * scale), 8, 14) " Bold", "Segoe UI")
-        UI.AddText("x0 y" subtitleY " w" w " h" subtitleH " Center cFFFFFF BackgroundTrans", subtitle)
+    titleCtrl := UI.AddText("x" padX " y" titleY " w" (w - padX * 2) " h" Max(28, Round(36 * scale)) " cFFFFFF BackgroundTrans", pageTitle)
+    titleCtrl.SetFont("s" titleFont " Bold cFFFFFF", "Segoe UI")
 
+    subtitleY := titleY + Max(30, Round(37 * scale))
+    subtitleCtrl := UI.AddText("x" padX " y" subtitleY " w" (w - padX * 2) " h" Max(18, Round(22 * scale)) " cB8C5D8 BackgroundTrans", pageSubtitle)
+    subtitleCtrl.SetFont("s" subtitleFont " cB8C5D8", "Segoe UI")
+
+    gridTop := headerH + Max(8, Round(12 * scale))
+
+    if (PAGE = "games") {
+        AddGrid(ReadItems("Game"), gridTop)
+        AddFooterAction("←  VOLTAR", Max(14, Round(22 * scale)), h - footerH, Max(120, Round(155 * scale)), footerH, (*) => ShowHome())
+    } else {
         items := ReadItems("Home")
 
         if (IniRead(CFG, "Special", "Enabled", "0") = "1") {
@@ -67,7 +78,8 @@ BuildUI() {
                 "Type", IniRead(CFG, "Special", "Type", "web"),
                 "Target", IniRead(CFG, "Special", "Target", "https://example.com/prova"),
                 "Protected", IniRead(CFG, "Special", "Protected", "0"),
-                "IconFile", IniRead(CFG, "Special", "IconFile", "")
+                "IconFile", IniRead(CFG, "Special", "IconFile", ""),
+                "IconGlyph", ""
             ))
         }
 
@@ -77,26 +89,21 @@ BuildUI() {
                 "Type", "page",
                 "Target", "games",
                 "Protected", "0",
-                "IconFile", IniRead(CFG, "General", "GamesIconFile", "")
+                "IconFile", "",
+                "IconGlyph", "🎮"
             ))
         }
 
         AddGrid(items, gridTop)
-
-        UI.SetFont("s" ClampInt(Round(8 * scale), 7, 10) " Bold", "Segoe UI")
-        UI.AddText("x" Max(10, Round(15 * scale)) " y" (h - FooterHeight() + 6) " w160 h18 cFFFFFF BackgroundTrans",
-            "config v" IniRead(CFG, "General", "Version", "0"))
     }
 
-    footerH := FooterHeight()
-    exitW := Max(145, Round(180 * scale))
-    exitH := Max(30, Round(38 * scale))
-    exitX := w - exitW - Max(12, Round(20 * scale))
-    exitY := h - footerH + Floor((footerH - exitH) / 2)
+    ; Rodape discreto.
+    ver := IniRead(CFG, "General", "Version", "0")
+    versionCtrl := UI.AddText("x" padX " y" (h - footerH + accentH + 5) " w250 h18 c7F94AD BackgroundTrans", "MODO ALUNO  •  config v" ver)
+    versionCtrl.SetFont("s" ClampInt(Round(8 * scale), 7, 9) " Bold c7F94AD", "Segoe UI")
 
-    UI.SetFont("s" ClampInt(Round(9 * scale), 8, 11) " Bold", "Segoe UI")
-    exit := UI.AddButton("x" exitX " y" exitY " w" exitW " h" exitH, "PROFESSOR / SAIR")
-    exit.OnEvent("Click", (*) => AskExit())
+    exitW := Max(150, Round(185 * scale))
+    AddFooterAction("🔒  PROFESSOR / SAIR", w - exitW - Max(14, Round(22 * scale)), h - footerH, exitW, footerH, (*) => AskExit())
 
     UI.Show("x0 y0 w" w " h" h)
     UI_VISIBLE := true
@@ -120,72 +127,118 @@ AddGrid(items, topY) {
     scale := UIScale()
     footerH := FooterHeight()
 
-    sideMargin := Max(16, Round(48 * scale))
-    gapX := Max(8, Round(16 * scale))
-    gapY := Max(4, Round(8 * scale))
+    sideMargin := Max(14, Round(38 * scale))
+    gapX := Max(7, Round(12 * scale))
+    gapY := Max(7, Round(12 * scale))
     availableW := w - sideMargin * 2
-    availableH := h - topY - footerH - Max(6, Round(8 * scale))
+    availableH := h - topY - footerH - Max(7, Round(10 * scale))
 
-    ; Escolhe automaticamente a maior quantidade de colunas que ainda deixa
-    ; cada bloco utilizavel. Quanto mais colunas, menos linhas e menos risco
-    ; de estourar verticalmente em notebook baixo.
     cols := ChooseColumnCount(items.Length, availableW, availableH, gapX, gapY)
     rows := Ceil(items.Length / cols)
 
     tileW := Floor((availableW - gapX * (cols - 1)) / cols)
-    rowH := Floor((availableH - gapY * (rows - 1)) / rows)
-
-    ; Tudo deriva da altura REAL disponivel da linha.
-    buttonH := ClampInt(Floor(rowH * 0.30), 28, Max(28, Round(42 * scale)))
-    labelFont := ClampInt(Round(Min(13 * scale, buttonH * 0.30)), 8, 13)
-    iconMaxByHeight := rowH - buttonH - Max(5, Round(7 * scale))
-    iconMaxByWidth := tileW - Max(10, Round(16 * scale))
-    iconSize := ClampInt(Min(iconMaxByHeight, iconMaxByWidth, Round(100 * scale)), 24, 100)
-
-    ; Em tela absurdamente baixa, prioriza caber: some com o icone e deixa
-    ; somente botoes compactos ao inves de jogar controles para fora.
-    showIcons := rowH >= 68 && iconSize >= 28
+    tileH := Floor((availableH - gapY * (rows - 1)) / rows)
 
     totalW := cols * tileW + (cols - 1) * gapX
     startX := Floor((w - totalW) / 2)
 
-    UI.SetFont("s" labelFont " Bold", "Segoe UI")
+    borderPx := Max(1, Round(1 * scale))
+    labelH := ClampInt(Round(tileH * 0.24), 24, Max(26, Round(38 * scale)))
+    labelFont := ClampInt(Round(11 * scale), 8, 12)
+
+    iconSpaceH := tileH - labelH - Max(8, Round(12 * scale))
+    iconSize := ClampInt(Min(iconSpaceH, tileW - Max(18, Round(26 * scale)), Round(86 * scale)), 24, 96)
+    showIcons := tileH >= 62 && iconSize >= 25
 
     for index, item in items {
         row := Floor((index - 1) / cols)
         col := Mod(index - 1, cols)
-        tileX := startX + col * (tileW + gapX)
-        tileY := topY + row * (rowH + gapY)
+        x := startX + col * (tileW + gapX)
+        y := topY + row * (tileH + gapY)
+
+        outerColor := "33475F"
+        innerColor := "101823"
+
+        if (item["Protected"] = "1") {
+            outerColor := "816829"
+            innerColor := "1D1A12"
+        } else if (item["Type"] = "page") {
+            outerColor := "2F80ED"
+            innerColor := "102238"
+        } else if (item["Name"] = "FAZER PROVA") {
+            outerColor := "3B91FF"
+            innerColor := "0E2946"
+        }
+
+        outer := UI.AddText("x" x " y" y " w" tileW " h" tileH " Background" outerColor, " ")
+        inner := UI.AddText("x" (x + borderPx) " y" (y + borderPx) " w" (tileW - borderPx * 2) " h" (tileH - borderPx * 2) " Background" innerColor, " ")
+
+        outer.OnEvent("Click", RunItem.Bind(item))
+        inner.OnEvent("Click", RunItem.Bind(item))
 
         iconFile := item.Has("IconFile") ? item["IconFile"] : ""
+        iconGlyph := item.Has("IconGlyph") ? item["IconGlyph"] : ""
         iconPath := iconFile != "" ? ASSETDIR "\" iconFile : ""
         hasIcon := showIcons && iconPath != "" && FileExist(iconPath)
 
         if hasIcon {
-            iconX := tileX + Floor((tileW - iconSize) / 2)
-            iconY := tileY + Max(0, Floor((rowH - iconSize - buttonH - 4) / 2))
+            iconX := x + Floor((tileW - iconSize) / 2)
+            iconY := y + Max(6, Floor((tileH - labelH - iconSize) / 2))
+
             try {
-                UI.AddPicture("x" iconX " y" iconY " w" iconSize " h" iconSize, iconPath)
+                icon := UI.AddPicture("x" iconX " y" iconY " w" iconSize " h" iconSize " BackgroundTrans", iconPath)
+                icon.OnEvent("Click", RunItem.Bind(item))
             } catch {
                 hasIcon := false
             }
         }
 
-        label := item["Name"]
-        if (item["Protected"] = "1")
-            label .= " [senha]"
+        if !hasIcon {
+            if (iconGlyph = "")
+                iconGlyph := FallbackGlyph(item["Name"])
 
-        if hasIcon {
-            by := tileY + rowH - buttonH
-            b := UI.AddButton("x" tileX " y" by " w" tileW " h" buttonH, label)
-        } else {
-            compactH := ClampInt(Floor(rowH * 0.62), 30, 58)
-            by := tileY + Floor((rowH - compactH) / 2)
-            b := UI.AddButton("x" tileX " y" by " w" tileW " h" compactH, label)
+            glyphH := Max(28, tileH - labelH - Max(8, Round(10 * scale)))
+            glyph := UI.AddText("x" (x + 4) " y" (y + 4) " w" (tileW - 8) " h" glyphH " Center 0x200 BackgroundTrans cFFFFFF", iconGlyph)
+            glyph.SetFont("s" ClampInt(Round(34 * scale), 18, 42) " cFFFFFF", "Segoe UI Emoji")
+            glyph.OnEvent("Click", RunItem.Bind(item))
         }
 
-        b.OnEvent("Click", RunItem.Bind(item))
+        label := item["Name"]
+        if (item["Protected"] = "1")
+            label .= "  🔒"
+
+        labelY := y + tileH - labelH - Max(2, Round(3 * scale))
+        labelCtrl := UI.AddText("x" (x + 5) " y" labelY " w" (tileW - 10) " h" labelH " Center 0x200 BackgroundTrans cFFFFFF", label)
+        labelCtrl.SetFont("s" labelFont " Bold cFFFFFF", "Segoe UI")
+        labelCtrl.OnEvent("Click", RunItem.Bind(item))
     }
+}
+
+AddFooterAction(text, x, footerY, width, footerH, callback) {
+    global UI
+
+    scale := UIScale()
+    h := Max(30, Round(36 * scale))
+    y := footerY + Floor((footerH - h) / 2)
+
+    outer := UI.AddText("x" x " y" y " w" width " h" h " Background32475F", " ")
+    inner := UI.AddText("x" (x + 1) " y" (y + 1) " w" (width - 2) " h" (h - 2) " Background101823", " ")
+    label := UI.AddText("x" (x + 4) " y" (y + 2) " w" (width - 8) " h" (h - 4) " Center 0x200 BackgroundTrans cDCE8F6", text)
+    label.SetFont("s" ClampInt(Round(9 * scale), 8, 11) " Bold cDCE8F6", "Segoe UI")
+
+    outer.OnEvent("Click", callback)
+    inner.OnEvent("Click", callback)
+    label.OnEvent("Click", callback)
+}
+
+FallbackGlyph(name) {
+    if (name = "")
+        return "•"
+
+    if (name = "JOGOS")
+        return "🎮"
+
+    return StrUpper(SubStr(name, 1, 1))
 }
 
 ChooseColumnCount(itemCount, availableW, availableH, gapX, gapY) {
@@ -193,21 +246,22 @@ ChooseColumnCount(itemCount, availableW, availableH, gapX, gapY) {
         return 1
 
     maxCols := Min(itemCount, 6)
-    minTileW := 135
-    minRowH := 78
+    minTileW := 128
+    minTileH := 76
 
-    ; Primeiro tenta caber com blocos confortaveis.
+    ; Primeiro procura o maior numero de colunas que ainda mantenha cada card
+    ; confortavel. Isso reduz as linhas em telas baixas.
     Loop maxCols {
         cols := maxCols - A_Index + 1
         rows := Ceil(itemCount / cols)
         tileW := Floor((availableW - gapX * (cols - 1)) / cols)
-        rowH := Floor((availableH - gapY * (rows - 1)) / rows)
+        tileH := Floor((availableH - gapY * (rows - 1)) / rows)
 
-        if (tileW >= minTileW && rowH >= minRowH)
+        if (tileW >= minTileW && tileH >= minTileH)
             return cols
     }
 
-    ; Se a tela for muito pequena, prioriza o que gera a maior area por item.
+    ; Em resolucao extrema, escolhe a grade que produz o melhor card possivel.
     bestCols := 1
     bestScore := -1
 
@@ -215,12 +269,12 @@ ChooseColumnCount(itemCount, availableW, availableH, gapX, gapY) {
         cols := A_Index
         rows := Ceil(itemCount / cols)
         tileW := Floor((availableW - gapX * (cols - 1)) / cols)
-        rowH := Floor((availableH - gapY * (rows - 1)) / rows)
+        tileH := Floor((availableH - gapY * (rows - 1)) / rows)
 
-        if (tileW <= 0 || rowH <= 0)
+        if (tileW <= 0 || tileH <= 0)
             continue
 
-        score := Min(tileW / 135.0, rowH / 78.0)
+        score := Min(tileW / 128.0, tileH / 76.0)
         if (score > bestScore) {
             bestScore := score
             bestCols := cols
@@ -234,20 +288,23 @@ UIScale() {
     w := A_ScreenWidth
     h := A_ScreenHeight
 
-    ; 1366x768 e a base. Mantem a UI legivel em 1024x600 e nao deixa
-    ; ficar gigantesca demais em monitor Full HD/4K.
+    ; 1366x768 e a referencia; 1024x600 continua sendo utilizavel.
     scale := Min(w / 1366.0, h / 768.0)
 
-    if (scale < 0.68)
-        scale := 0.68
+    if (scale < 0.66)
+        scale := 0.66
     if (scale > 1.15)
         scale := 1.15
 
     return scale
 }
 
+HeaderHeight() {
+    return Max(66, Round(78 * UIScale()))
+}
+
 FooterHeight() {
-    return Max(50, Round(62 * UIScale()))
+    return Max(50, Round(58 * UIScale()))
 }
 
 ClampInt(value, minValue, maxValue) {
@@ -275,7 +332,8 @@ ReadItems(prefix) {
             "Type", IniRead(CFG, sec, "Type", "web"),
             "Target", IniRead(CFG, sec, "Target", ""),
             "Protected", IniRead(CFG, sec, "Protected", "0"),
-            "IconFile", IniRead(CFG, sec, "IconFile", "")
+            "IconFile", IniRead(CFG, sec, "IconFile", ""),
+            "IconGlyph", IniRead(CFG, sec, "IconGlyph", "")
         ))
     }
 
@@ -319,6 +377,7 @@ OpenSpecial() {
         "Type", IniRead(CFG, "Special", "Type", "web"),
         "Target", IniRead(CFG, "Special", "Target", "https://example.com/prova"),
         "Protected", IniRead(CFG, "Special", "Protected", "0"),
-        "IconFile", IniRead(CFG, "Special", "IconFile", "")
+        "IconFile", IniRead(CFG, "Special", "IconFile", ""),
+        "IconGlyph", ""
     ))
 }
