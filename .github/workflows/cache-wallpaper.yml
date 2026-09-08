@@ -1,6 +1,7 @@
 name: Cache wallpaper in repository
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - '.github/workflows/cache-wallpaper.yml'
