@@ -290,9 +290,10 @@ PrepareExternal() {
     EXTERNAL_TITLE := ""
     EXTERNAL_STARTED := A_TickCount
 
-    ; O launcher continua existindo em tela cheia, mas nunca e topmost.
-    ; Tudo aberto por ele fica acima.
+    ; O launcher continua existindo em tela cheia, mas ao abrir qualquer coisa
+    ; perde o topmost e fica definitivamente por baixo da sessao do aluno.
     if IsObject(UI) {
+        try UI.Opt("-AlwaysOnTop")
         try {
             UI.Show("NoActivate x0 y0 w" A_ScreenWidth " h" A_ScreenHeight)
             UI_VISIBLE := true
@@ -402,6 +403,12 @@ FinishExternal() {
 CancelExternalMonitor() {
     global EXTERNAL_ACTIVE, EXTERNAL_PID, EXTERNAL_HWND, EXTERNAL_TITLE
     global STUDENT_WINDOWS, STUDENT_PIDS, LAST_STUDENT_HWND
+
+    ; ShowHome/F1 pode chamar isto. Se ainda existe alguma coisa aberta,
+    ; NAO desmonta a protecao: o launcher continua atras e a janela externa
+    ; continua maximizada/topmost.
+    if (STUDENT_WINDOWS.Count > 0 || STUDENT_PIDS.Count > 0 || EXTERNAL_TITLE != "")
+        return
 
     SetTimer(MonitorExternal, 0)
     EXTERNAL_ACTIVE := false
