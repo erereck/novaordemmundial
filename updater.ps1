@@ -31,10 +31,7 @@ try {
     New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
     New-Item -ItemType Directory -Force -Path $extractPath | Out-Null
 
-    Invoke-WebRequest \
-        -UseBasicParsing \
-        -Uri 'https://github.com/erereck/novaordemmundial/archive/refs/heads/main.zip' \
-        -OutFile $zipPath
+    Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/erereck/novaordemmundial/archive/refs/heads/main.zip' -OutFile $zipPath
 
     Expand-Archive -LiteralPath $zipPath -DestinationPath $extractPath -Force
 
