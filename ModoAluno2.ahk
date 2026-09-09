@@ -30,6 +30,7 @@ global LAST_STUDENT_HWND := 0
 #Include "src\UI.ahk"
 #Include "src\WebGuard.ahk"
 #Include "src\Apps.ahk"
+#Include "src\TuxPaint.ahk"
 #Include "src\Security.ahk"
 #Include "src\Windows.ahk"
 #Include "src\Updater.ahk"
@@ -61,6 +62,12 @@ RWin::Return
 ^!+u::OpenStudentChromeSetup()
 ^!+q::CloseAllOutsideLauncher()
 F1::ShowHome()
+
+; Tux Paint: clicar no X da janela ou usar Alt+F4 encerra o processo na hora.
+#HotIf WinActive("ahk_exe tuxpaint.exe")
+~LButton::HandleTuxPaintCloseClick()
+!F4::ForceCloseTuxPaint()
+#HotIf
 
 #HotIf LauncherActive()
 g::OpenHomeNamed("Google")
