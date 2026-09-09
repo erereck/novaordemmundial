@@ -41,8 +41,9 @@ OpenHomeNamed(name) {
 }
 
 OpenProgram(target) {
-    global EXTERNAL_PID, EXTERNAL_HWND, UI
+    global EXTERNAL_PID, EXTERNAL_HWND, STUDENT_PIDS
 
+    before := SnapshotWindows()
     PrepareExternal()
 
     pid := 0
@@ -57,18 +58,14 @@ OpenProgram(target) {
     EXTERNAL_PID := pid
     EXTERNAL_HWND := 0
 
-    Loop 15 {
-        Sleep(150)
-        hwnd := WinActive("A")
-        if hwnd {
-            if !IsObject(UI) || hwnd != UI.Hwnd {
-                EXTERNAL_HWND := hwnd
-                break
-            }
-        }
-    }
+    if pid
+        STUDENT_PIDS[pid] := true
 
-    SetTimer(MonitorExternal, 500)
+    hwnd := WaitForExternalWindow(before, pid, 5000)
+    if hwnd
+        RegisterStudentWindow(hwnd, pid)
+
+    SetTimer(MonitorExternal, 400)
 }
 
 OpenWeb(url) {
@@ -90,13 +87,10 @@ OpenWeb(url) {
 }
 
 OpenChromeProfileUrl(chrome, url, appMode := true) {
-    global EXTERNAL_PID, EXTERNAL_HWND, WEB_GUARD_ACTIVE
+    global EXTERNAL_PID, EXTERNAL_HWND, STUDENT_PIDS
 
+    before := SnapshotWindows()
     PrepareExternal()
-
-    before := Map()
-    for hwnd in WinGetList("ahk_exe chrome.exe")
-        before[hwnd] := true
 
     profile := StudentChromeProfileDir()
     port := WebGuardPort()
@@ -125,29 +119,17 @@ OpenChromeProfileUrl(chrome, url, appMode := true) {
 
     EXTERNAL_PID := pid
     EXTERNAL_HWND := 0
+
+    if pid
+        STUDENT_PIDS[pid] := true
+
     StartWebGuardMonitor()
 
-    Loop 20 {
-        Sleep(160)
+    hwnd := WaitForExternalWindow(before, pid, 6000)
+    if hwnd
+        RegisterStudentWindow(hwnd, pid)
 
-        for hwnd in WinGetList("ahk_exe chrome.exe") {
-            if !before.Has(hwnd) {
-                EXTERNAL_HWND := hwnd
-                break
-            }
-        }
-
-        if EXTERNAL_HWND
-            break
-    }
-
-    if !EXTERNAL_HWND {
-        activeChrome := WinActive("ahk_exe chrome.exe")
-        if activeChrome
-            EXTERNAL_HWND := activeChrome
-    }
-
-    SetTimer(MonitorExternal, 500)
+    SetTimer(MonitorExternal, 400)
 }
 
 OpenStoreApp(name) {
@@ -183,7 +165,7 @@ OpenStoreApp(name) {
     }
 
     EXTERNAL_TITLE := name
-    SetTimer(MonitorExternal, 500)
+    SetTimer(MonitorExternal, 400)
 }
 
 FindChrome() {
@@ -205,6 +187,100 @@ FindChrome() {
     return ""
 }
 
+SnapshotWindows() {
+    snapshot := Map()
+    for hwnd in WinGetList()
+        snapshot[hwnd] := true
+    return snapshot
+}
+
+WaitForExternalWindow(before, preferredPid := 0, timeoutMs := 5000) {
+    loops := Max(1, Ceil(timeoutMs / 125))
+
+    Loop loops {
+        Sleep(125)
+
+        if preferredPid {
+            try {
+                for hwnd in WinGetList("ahk_pid " preferredPid) {
+                    if IsStudentWindowCandidate(hwnd)
+                        return hwnd
+                }
+            } catch {
+            }
+        }
+
+        for hwnd in WinGetList() {
+            if before.Has(hwnd)
+                continue
+
+            if IsStudentWindowCandidate(hwnd)
+                return hwnd
+        }
+    }
+
+    return 0
+}
+
+IsStudentWindowCandidate(hwnd) {
+    global UI
+
+    if !hwnd
+        return false
+
+    if IsObject(UI) {
+        try {
+            if (hwnd = UI.Hwnd)
+                return false
+        } catch {
+        }
+    }
+
+    try {
+        if !DllCall("IsWindowVisible", "Ptr", hwnd, "Int")
+            return false
+    } catch {
+        return false
+    }
+
+    title := ""
+    try title := WinGetTitle("ahk_id " hwnd)
+    if (title = "")
+        return false
+
+    className := ""
+    try className := WinGetClass("ahk_id " hwnd)
+
+    if (className = "Progman" || className = "WorkerW" || className = "Shell_TrayWnd" || className = "Shell_SecondaryTrayWnd")
+        return false
+
+    return true
+}
+
+RegisterStudentWindow(hwnd, pid := 0) {
+    global STUDENT_WINDOWS, STUDENT_PIDS, LAST_STUDENT_HWND
+    global EXTERNAL_ACTIVE, EXTERNAL_HWND, EXTERNAL_PID
+
+    if !IsStudentWindowCandidate(hwnd)
+        return false
+
+    STUDENT_WINDOWS[hwnd] := true
+    if pid
+        STUDENT_PIDS[pid] := true
+
+    LAST_STUDENT_HWND := hwnd
+    EXTERNAL_ACTIVE := true
+    EXTERNAL_HWND := hwnd
+    if pid
+        EXTERNAL_PID := pid
+
+    try WinMaximize("ahk_id " hwnd)
+    try WinSetAlwaysOnTop(1, "ahk_id " hwnd)
+    try WinActivate("ahk_id " hwnd)
+
+    return true
+}
+
 PrepareExternal() {
     global UI, UI_VISIBLE, EXTERNAL_ACTIVE, EXTERNAL_PID, EXTERNAL_HWND, EXTERNAL_TITLE, EXTERNAL_STARTED
 
@@ -214,11 +290,9 @@ PrepareExternal() {
     EXTERNAL_TITLE := ""
     EXTERNAL_STARTED := A_TickCount
 
+    ; O launcher continua existindo em tela cheia, mas nunca e topmost.
+    ; Tudo aberto por ele fica acima.
     if IsObject(UI) {
-        try {
-            UI.Opt("-AlwaysOnTop")
-        } catch {
-        }
         try {
             UI.Show("NoActivate x0 y0 w" A_ScreenWidth " h" A_ScreenHeight)
             UI_VISIBLE := true
@@ -228,53 +302,94 @@ PrepareExternal() {
 }
 
 MonitorExternal() {
-    global EXTERNAL_ACTIVE, EXTERNAL_PID, EXTERNAL_HWND, EXTERNAL_TITLE, EXTERNAL_STARTED
+    global STUDENT_WINDOWS, STUDENT_PIDS, EXTERNAL_TITLE, EXTERNAL_STARTED
 
-    if !EXTERNAL_ACTIVE {
-        SetTimer(MonitorExternal, 0)
-        return
-    }
-
-    if EXTERNAL_HWND {
-        if !WinExist("ahk_id " EXTERNAL_HWND)
-            FinishExternal()
-        return
-    }
-
-    if (EXTERNAL_TITLE != "") {
-        hwnd := WinExist(EXTERNAL_TITLE)
-        if hwnd {
-            EXTERNAL_HWND := hwnd
-            return
+    deadWindows := []
+    for hwnd, _ in STUDENT_WINDOWS {
+        if !WinExist("ahk_id " hwnd) {
+            deadWindows.Push(hwnd)
+            continue
         }
 
-        if ((A_TickCount - EXTERNAL_STARTED) < 15000)
-            return
+        ; Janela de aluno nao pode cair atras do launcher.
+        try WinSetAlwaysOnTop(1, "ahk_id " hwnd)
 
-        EXTERNAL_TITLE := ""
-        return
+        ; A regra da v5 e sempre abrir/manter maximizado.
+        try {
+            if (WinGetMinMax("ahk_id " hwnd) != 1)
+                WinMaximize("ahk_id " hwnd)
+        } catch {
+        }
     }
 
-    if EXTERNAL_PID {
-        if !ProcessExist(EXTERNAL_PID)
-            FinishExternal()
+    for _, hwnd in deadWindows
+        STUDENT_WINDOWS.Delete(hwnd)
+
+    deadPids := []
+    for pid, _ in STUDENT_PIDS {
+        if !ProcessExist(pid) {
+            deadPids.Push(pid)
+            continue
+        }
+
+        try {
+            for hwnd in WinGetList("ahk_pid " pid) {
+                if !STUDENT_WINDOWS.Has(hwnd) && IsStudentWindowCandidate(hwnd)
+                    RegisterStudentWindow(hwnd, pid)
+            }
+        } catch {
+        }
     }
+
+    for _, pid in deadPids
+        STUDENT_PIDS.Delete(pid)
+
+    if (EXTERNAL_TITLE != "") {
+        hwnd := FindWindowByTitleNeedle(EXTERNAL_TITLE)
+        if hwnd {
+            RegisterStudentWindow(hwnd)
+            EXTERNAL_TITLE := ""
+        } else if ((A_TickCount - EXTERNAL_STARTED) > 15000) {
+            EXTERNAL_TITLE := ""
+        }
+    }
+
+    if (STUDENT_WINDOWS.Count = 0 && STUDENT_PIDS.Count = 0 && EXTERNAL_TITLE = "")
+        FinishExternal()
+}
+
+FindWindowByTitleNeedle(needle) {
+    lowerNeedle := StrLower(needle)
+
+    for hwnd in WinGetList() {
+        if !IsStudentWindowCandidate(hwnd)
+            continue
+
+        title := ""
+        try title := WinGetTitle("ahk_id " hwnd)
+
+        if InStr(StrLower(title), lowerNeedle)
+            return hwnd
+    }
+
+    return 0
 }
 
 FinishExternal() {
     global UI, UI_VISIBLE, EXTERNAL_ACTIVE, EXTERNAL_PID, EXTERNAL_HWND, EXTERNAL_TITLE
+    global STUDENT_WINDOWS, STUDENT_PIDS, LAST_STUDENT_HWND
+
+    if (STUDENT_WINDOWS.Count > 0 || STUDENT_PIDS.Count > 0 || EXTERNAL_TITLE != "")
+        return
 
     SetTimer(MonitorExternal, 0)
     EXTERNAL_ACTIVE := false
     EXTERNAL_PID := 0
     EXTERNAL_HWND := 0
     EXTERNAL_TITLE := ""
+    LAST_STUDENT_HWND := 0
 
     if IsObject(UI) {
-        try {
-            UI.Opt("+AlwaysOnTop")
-        } catch {
-        }
         try {
             UI.Show("x0 y0 w" A_ScreenWidth " h" A_ScreenHeight)
             UI_VISIBLE := true
@@ -286,10 +401,14 @@ FinishExternal() {
 
 CancelExternalMonitor() {
     global EXTERNAL_ACTIVE, EXTERNAL_PID, EXTERNAL_HWND, EXTERNAL_TITLE
+    global STUDENT_WINDOWS, STUDENT_PIDS, LAST_STUDENT_HWND
 
     SetTimer(MonitorExternal, 0)
     EXTERNAL_ACTIVE := false
     EXTERNAL_PID := 0
     EXTERNAL_HWND := 0
     EXTERNAL_TITLE := ""
+    LAST_STUDENT_HWND := 0
+    STUDENT_WINDOWS := Map()
+    STUDENT_PIDS := Map()
 }
