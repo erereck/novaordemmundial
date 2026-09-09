@@ -138,34 +138,95 @@ OpenStoreApp(name) {
     if (name = "")
         return
 
+    before := SnapshotWindows()
     PrepareExternal()
     found := false
 
-    try {
-        shell := ComObject("Shell.Application")
-        folder := shell.Namespace("shell:AppsFolder")
+    ; Caminho principal: pergunta ao proprio Windows qual AppUserModelID foi
+    ; registrado no menu Iniciar e abre por shell:AppsFolder\<AppID>.
+    appId := ResolveStoreAppId(name)
+    if (appId != "") {
+        q := Chr(34)
+        try {
+            Run("explorer.exe " q "shell:AppsFolder\" appId q)
+            found := true
+        } catch {
+            found := false
+        }
+    }
 
-        if folder {
-            for item in folder.Items {
-                if InStr(StrLower(item.Name), StrLower(name)) {
-                    item.InvokeVerb("open")
-                    found := true
-                    break
+    ; Fallback para maquinas em que Get-StartApps nao devolva o aplicativo.
+    if !found {
+        try {
+            shell := ComObject("Shell.Application")
+            folder := shell.Namespace("shell:AppsFolder")
+
+            if folder {
+                for item in folder.Items {
+                    if InStr(StrLower(item.Name), StrLower(name)) {
+                        item.InvokeVerb("open")
+                        found := true
+                        break
+                    }
                 }
             }
+        } catch {
+            found := false
         }
-    } catch {
-        found := false
     }
 
     if !found {
         FinishExternal()
-        MsgBox("Nao achei o aplicativo '" name "' instalado pela Microsoft Store.", "Modo Aluno")
+        MsgBox("Nao achei o aplicativo '" name "' instalado neste Windows.", "Modo Aluno")
         return
     }
 
+    ; UWP/MSIX costuma ser iniciado por um processo intermediario, entao nao
+    ; confiamos em PID. Detectamos a janela nova e aplicamos as mesmas regras
+    ; de qualquer app: maximizada + topmost.
     EXTERNAL_TITLE := name
+    hwnd := WaitForExternalWindow(before, 0, 9000)
+
+    if !hwnd
+        hwnd := FindWindowByTitleNeedle(name)
+
+    if hwnd {
+        RegisterStudentWindow(hwnd)
+        EXTERNAL_TITLE := ""
+    }
+
     SetTimer(MonitorExternal, 400)
+}
+
+ResolveStoreAppId(name) {
+    script := A_ScriptDir "\tools\resolve-store-app.ps1"
+    if !FileExist(script)
+        return ""
+
+    q := Chr(34)
+    safeName := StrReplace(name, q, "")
+    cmd := "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "
+        . q script q
+        . " -Name " q safeName q
+
+    try {
+        ws := ComObject("WScript.Shell")
+        exec := ws.Exec(cmd)
+        deadline := A_TickCount + 6000
+
+        while (exec.Status = 0 && A_TickCount < deadline)
+            Sleep(50)
+
+        if (exec.Status = 0) {
+            try exec.Terminate()
+            return ""
+        }
+
+        appId := Trim(exec.StdOut.ReadAll(), " `t`r`n")
+        return appId
+    } catch {
+        return ""
+    }
 }
 
 FindChrome() {
