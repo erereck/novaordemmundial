@@ -63,8 +63,10 @@ RWin::Return
 ^!+q::CloseAllOutsideLauncher()
 F1::ShowHome()
 
-; Tux Paint: clicar no X da janela ou usar Alt+F4 encerra o processo na hora.
+; Tux Paint: X no teclado, clicar no X da janela ou Alt+F4 mata o processo.
 #HotIf WinActive("ahk_exe tuxpaint.exe")
+x::ForceCloseTuxPaint()
++x::ForceCloseTuxPaint()
 ~LButton::HandleTuxPaintCloseClick()
 !F4::ForceCloseTuxPaint()
 #HotIf
