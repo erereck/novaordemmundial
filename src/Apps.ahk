@@ -138,6 +138,12 @@ OpenStoreApp(name) {
     if (name = "")
         return
 
+    compactName := StrLower(StrReplace(name, " ", ""))
+    if (compactName = "typingland") {
+        OpenTypingLandDedicated()
+        return
+    }
+
     before := SnapshotWindows()
     PrepareExternal()
     found := false
@@ -196,6 +202,65 @@ OpenStoreApp(name) {
     }
 
     SetTimer(MonitorExternal, 400)
+}
+
+OpenTypingLandDedicated() {
+    global EXTERNAL_PID, EXTERNAL_HWND, STUDENT_PIDS
+
+    script := A_ScriptDir "\tools\open-typingland.ps1"
+    if !FileExist(script) {
+        MsgBox("Launcher do Typing Land nao encontrado.`n`n" script, "Modo Aluno")
+        return
+    }
+
+    before := SnapshotWindows()
+    PrepareExternal()
+
+    q := Chr(34)
+    cmd := "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File " q script q
+    pid := 0
+
+    try {
+        Run(cmd, , "Hide", &pid)
+    } catch {
+        FinishExternal()
+        MsgBox("Nao consegui iniciar o launcher do Typing Land.", "Modo Aluno")
+        return
+    }
+
+    EXTERNAL_PID := pid
+    EXTERNAL_HWND := 0
+    if pid
+        STUDENT_PIDS[pid] := true
+
+    hwnd := WaitForExternalWindow(before, 0, 15000)
+
+    if !hwnd
+        hwnd := FindWindowByTitleNeedle("Typing")
+
+    if hwnd {
+        RegisterStudentWindow(hwnd)
+        SetTimer(MonitorExternal, 400)
+        return
+    }
+
+    if pid && STUDENT_PIDS.Has(pid)
+        STUDENT_PIDS.Delete(pid)
+    EXTERNAL_PID := 0
+    FinishExternal()
+
+    debugPath := EnvGet("LOCALAPPDATA") "\NovaOrdemMundial\typingland-debug.txt"
+    if FileExist(debugPath) {
+        MsgBox(
+            "O Windows nao conseguiu abrir o Typing Land.`n`nFoi criado um diagnostico em:`n" debugPath "`n`nMe envie esse arquivo e eu cravo o AppID exato.",
+            "Typing Land"
+        )
+    } else {
+        MsgBox(
+            "O Typing Land nao abriu e o Windows nao retornou uma janela.`n`nConfirme se ele abre normalmente pelo Menu Iniciar.",
+            "Typing Land"
+        )
+    }
 }
 
 ResolveStoreAppId(name) {
